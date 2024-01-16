@@ -5,123 +5,99 @@ import java.io.IOException;
 
 class Scanner {
     
-    BufferedReader in;
-    char currentChar;
-    String word;
-    Core token;
+    // Members to be used by the class, storing the input stream, token enum, and word corresponding to identifiers/constants.
+    static BufferedReader in;
+    static String word;
+    static Core token;
 
+    // Constant defining the upper limit of valid constants in our language.
     static final int MAX_CONST = 999983;
 
-    // Initialize the scanner
+    // Initialize the scanner.
     Scanner(String filename) {
-        // Initializes the input reader
+        // Initializes the input reader.
         try {
             in = new BufferedReader(new FileReader(filename));
         } catch (FileNotFoundException e) {
             System.out.println("File \"" + filename + "\" not found.");
         }
+
+        // Populates 'token' member with first token in file.
+        nextToken();
     }
 
-    // Advance to the next token
+    // Advance to the next token.
     public void nextToken() {
-        word = "";
-        getNextChar();
+        try {
+            char currentChar = (char) in.read();
+            word = "";
 
-        // Advances char pointer until whitespace is fully consumed
-        while (currentChar == ' ')
-            getNextChar();
+            // Consume whitespace until character is detected.
+            while (Character.isWhitespace(currentChar)) {
+                currentChar = (char) in.read();
+            }
 
-        // Builds the word string until whitespace is detected
-        while (currentChar != ' ') {
-            word += currentChar;
-            getNextChar();
-        }
+            // If the first character following whitespace is a letter... 
+            if (Character.isLetter(currentChar)) {
 
-        boolean isAlphaNumeric = word.matches("^[a-zA-Z0-9]+$");
-        boolean isConstant = word.matches("^-?\\d+$");
-        
-        //  
-        if (isAlphaNumeric) {
-            setKeywordOrIdentifier();
+                // ...build the 'word' string until a non-alphanumeric character is detected.
+                word += currentChar;
+                while (Character.isLetter(peekNextChar()) || Character.isDigit(peekNextChar())) {
+                    currentChar = (char) in.read();
+                    word += currentChar;
+                }
 
-        // 
-        } else if (isConstant) {
-            int value = Integer.parseInt(word);
-            if (value >= 0 && value <= MAX_CONST) {
-                token = Core.CONST;
+                // Determine whether the alphanumeric word is a keyword or an identifier, and update the 'token' member accordingly.
+                detectKeywordOrIdentifier(word);
+
+            // Otherwise, if the first character following whitespace is a digit...
+            } else if (Character.isDigit(currentChar)) {
+                
+                // ...build the 'word' string until a non-digit character is detected.
+                word += currentChar;
+                while (Character.isDigit(peekNextChar())) {
+                    currentChar = (char) in.read();
+                    word += currentChar;
+                }
+
+                // Get the integer value of the string, and verify it falls within the specified range.
+                int value = Integer.parseInt(word);
+                if (value >= 0 && value <= MAX_CONST) {
+                    // If it does, set 'token' to CONST...
+                    token = Core.CONST;
+                } else { 
+                    // ...otherwise, give an error message
+                    System.out.println("Constant '" + value + "' falls outside of range 0 - " + MAX_CONST + " (inclusive).");
+                }
+
+            // If the character isn't a letter or digit, it must be one of the special characters...
             } else {
-                System.out.println("Constant falls outside of range 0 - " + MAX_CONST + " (inclusive).");
+                // ...so figure out which one it is, and update the 'token' member accordingly.
+                detectSymbol(currentChar);
             }
-        } else if (word.length() == 1) {
-            switch (word) {
-                case "+":
-                    token = Core.ADD;
-                    break;
-                case "-":
-                    token = Core.SUBTRACT;
-                    break;
-                case "*":
-                    token = Core.MULTIPLY;
-                    break;
-                case "/":
-                    token = Core.DIVIDE;
-                    break;
-                case "=":
-                    token = Core.ASSIGN;
-                    break;
-                case "<":
-                    token = Core.LESS;
-                    break;
-                case ":":
-                    token = Core.COLON;
-                    break;
-                case ";":
-                    token = Core.SEMICOLON;
-                    break;
-                case ".":
-                    token = Core.PERIOD;
-                    break;
-                case ",":
-                    token = Core.COMMA;
-                    break;
-                case "(":
-                    token = Core.LPAREN;
-                    break;
-                case ")":
-                    token = Core.RPAREN;
-                    break;
-                case "[":
-                    token = Core.LBRACE;
-                    break;
-                case "]":
-                    token = Core.RBRACE;
-                    break;
-                default:
-                    System.out.println("Invalid token '" + word + "' detected.");
-                    break;
-            }
-        }
             
-        
-        
+        } catch (IOException e) {
+            System.out.println("An error has occurred reading from the file.");
+        }
     }
 
-    // Return the current token
+    // Return the current token using the 'token' member.
     public Core currentToken() {
         return token;
     }
 
-	// Return the identifier string
+	// Return the identifier string stored in 'word'.
     public String getId() {
         return word;
     }
 
-	// Return the constant value
+	// Return the constant value by parsing the 'word' string as an integer.
     public int getConst() {
         return Integer.parseInt(word);
     }
 
-    private void setKeywordOrIdentifier() {
+    // Determine what token the 'word' string belongs to: a keyword or identifier.
+    public static void detectKeywordOrIdentifier(String word) {
         switch (word) {
             case "procedure":
                 token = Core.PROCEDURE;
@@ -179,14 +155,97 @@ class Scanner {
                 break;
             default:
                 token = Core.ID;
+                break;
         }
     }
 
-    private void getNextChar() {
-        try {
-            currentChar = (char) in.read();
-        } catch(IOException e) {
-            System.out.println("Error reading from file.");
+    public static void detectSymbol(char c) {
+        switch (c) {
+            case '+':
+            token = Core.ADD;
+            break;
+        case '-':
+            token = Core.SUBTRACT;
+            break;
+        case '*':
+            token = Core.MULTIPLY;
+            break;
+        case '/':
+            token = Core.DIVIDE;
+            break;
+        case '=':
+            // Since '=' and '==' are distinct tokens, we must peek ahead one character.
+            try {
+                in.mark(1);
+                char nextChar = (char) in.read();
+
+                // Set the 'token' member to 'EQUAL' for '==', and 'ASSIGN' for '='.
+                if (nextChar == '=') {
+                    token = Core.EQUAL;
+                } else {
+                    token = Core.ASSIGN;
+                    in.reset(); // Prevents premature token consumption.
+                }
+
+            } catch (IOException e) {
+                System.out.println("Error reading next character from input stream.");
+            }
+            
+            break;
+        case '<':
+            token = Core.LESS;
+            break;
+        case ':':
+            token = Core.COLON;
+            break;
+        case ';':
+            token = Core.SEMICOLON;
+            break;
+        case '.':
+            token = Core.PERIOD;
+            break;
+        case ',':
+            token = Core.COMMA;
+            break;
+        case '(':
+            token = Core.LPAREN;
+            break;
+        case ')':
+            token = Core.RPAREN;
+            break;
+        case '[':
+            token = Core.LBRACE;
+            break;
+        case ']':
+            token = Core.RBRACE;
+            break;
+
+        // The .read() method from BufferedReader returns a -1 when it reaches the end-of-stream.
+        // Since the subject of the switch-case is a char, the integer has to be cast as a char to be detected.
+        case (char) -1:
+            token = Core.EOS;
+
+            // Close the input stream.
+            try {
+                in.close();
+            } catch (IOException e) {
+                System.out.println("Error closing file.");
+            }
+            break;
+
+        // Any symbols not recognized by the above cases are invalid, so print an error message.
+        default:
+            token = Core.ERROR;
+            System.out.println("Invalid character '" + c + "' detected.");
         }
+    }
+
+    // Peeks at the next character in the input stream to prevent premature token consumption.
+    public static char peekNextChar() throws IOException {
+        in.mark(1);
+        char nextChar = (char) in.read();
+        in.reset();
+        
+        return nextChar;
     }
 }
